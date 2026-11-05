@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="color-scheme" content="dark"/>
+<title>三体 · 无序之舞</title>
+<meta name="description" content="三颗恒星与四颗行星的三维引力运行模型。观察不规则轨迹，旋转缩放、跟随星体或调整时间速度。"/>
+<style>
+:root{color-scheme:dark;background:#030713;color:#dce2eb;font:14px/1.5 system-ui,"PingFang SC",sans-serif;}
+html,body{margin:0;min-height:100%;}body{padding:18px;box-sizing:border-box;}
+#three-body-universe{max-width:1400px;margin:auto;}
+.viz-row,.viz-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;}.viz-controls{gap:14px 22px;}
+.form-label{display:flex;flex:1 1 150px;flex-direction:column;gap:6px;margin:0;font-size:12px;color:#9daec0;}
+.form-label>span{display:flex;justify-content:space-between;}.form-range{accent-color:#a4bed1;min-height:24px;width:100%;margin:0;}
+.btn,.form-select{font:inherit;color:#dce2eb;background:#101b2c;border:1px solid #2b3b50;border-radius:6px;padding:9px 12px;}
+.btn:hover{background:#192a40;}.btn[aria-pressed=true]{background:#c8d9e1;color:#0c1422;}.form-select{padding:8px 10px;}
+.form-check{display:flex;align-items:center;gap:7px;font-size:12px;color:#9daec0;}.form-check-input{accent-color:#9fc5d8;}
+.text-muted{color:#7e8fa3;}.text-small{font-size:11px;}.tabular-nums{font-variant-numeric:tabular-nums;}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
+@media(min-width:1000px){body #three-body-universe .tb-stage{height:min(75dvh,850px);}}
+@media(max-width:540px){body{padding:0 12px 18px;}body #three-body-universe .tb-stage{margin-left:-12px;width:calc(100% + 24px);}.viz-controls>.viz-row{width:100%;}.form-label{flex-basis:calc(50% - 22px);}}
+</style>
+</head>
+<body>
+<div id="three-body-universe">
+  <div class="tb-stage">
+    <canvas id="tb-cosmos" role="img" aria-label="三维三恒星系统：三颗恒星按彼此引力不规则运动，每颗恒星配有行星，另有一颗三体星。拖拽旋转，滚轮或双指缩放，点击星体查看。">三恒星与四行星引力模拟。</canvas>
+    <div class="tb-title">
+      <p>THE THREE-BODY WORLD</p>
+      <h2>三体 · 无序之舞</h2>
+      <span>三颗恒星，四颗行星。</span>
+    </div>
+    <div class="tb-clock"><span>观测时间</span><output id="tb-time">0.00 年</output></div>
+    <div class="tb-legend" aria-label="恒星颜色">
+      <span><b class="tb-dot tb-a"></b>A <small>1.22 M☉</small></span>
+      <span><b class="tb-dot tb-b"></b>B <small>0.94 M☉</small></span>
+      <span><b class="tb-dot tb-c"></b>C <small>0.73 M☉</small></span>
+    </div>
+    <div class="tb-gesture">拖拽旋转 · 滚轮 / 双指缩放 · 点选星体</div>
+  </div>
+  <div class="viz-controls tb-controls">
+    <div class="viz-row">
+      <button type="button" class="btn" id="tb-pause" aria-pressed="false">暂停</button>
+      <button type="button" class="btn" id="tb-reset">重新开始</button>
+      <button type="button" class="btn btn-ghost" id="tb-home">视角归位</button>
+    </div>
+    <label class="form-label" for="tb-follow">镜头跟随
+      <select id="tb-follow" class="form-select">
+        <option value="system">系统质心</option>
+        <option value="a">恒星 A</option>
+        <option value="b">恒星 B</option>
+        <option value="c">恒星 C</option>
+        <option value="trisolaris">三体星</option>
+        <option value="p1">A · 砾星</option>
+        <option value="p2">B · 沧星</option>
+        <option value="p3">C · 沙星</option>
+      </select>
+    </label>
+    <label class="form-label" for="tb-speed"><span>时间速度 <output id="tb-speed-value" class="tabular-nums">1×</output></span>
+      <input id="tb-speed" type="range" min="0" max="4" step="1" value="2" class="form-range" aria-label="模拟时间速度"/>
+    </label>
+    <label class="form-check"><input id="tb-trails" class="form-check-input" type="checkbox" checked="checked"/><span class="form-check-label">运动轨迹</span></label>
+  </div>
+  <div class="tb-detail viz-row">
+    <span id="tb-selected" class="tabular-nums">三体星</span>
+    <span id="tb-reading" class="text-small text-muted">三日合计照度</span>
+    <span class="text-small text-muted tb-size-note">星体大小已放大</span>
+  </div>
+  <span class="sr-only" id="tb-announcer" aria-live="polite"></span>
+</div>
+<style>
+#three-body-universe{width:100%;isolation:isolate;}
+#three-body-universe .tb-stage{position:relative;width:100%;height:clamp(450px,76vw,610px);overflow:hidden;background:#020610;}
+#three-body-universe #tb-cosmos{display:block;width:100%;height:100%;touch-action:none;cursor:grab;}
+#three-body-universe .tb-title{position:absolute;top:26px;left:27px;pointer-events:none;color:#e9eaf1;font-family:system-ui,"PingFang SC",sans-serif;}
+#three-body-universe .tb-title p{font-size:9px;letter-spacing:3px;color:#92a4bb;margin:0 0 13px;font-weight:400;line-height:1.4;}
+#three-body-universe .tb-title h2{font:400 28px/1.25 "Songti SC","Iowan Old Style",serif;letter-spacing:4px;color:#f0eee8;margin:0 0 10px;}
+#three-body-universe .tb-title>span{font-size:11px;letter-spacing:1px;color:#8999ad;}
+#three-body-universe .tb-clock{position:absolute;right:25px;top:89px;display:grid;gap:5px;text-align:right;pointer-events:none;font:11px/1.4 system-ui,sans-serif;color:#8294a9;}
+#three-body-universe .tb-clock output{color:#dce3ed;font-size:15px;letter-spacing:1px;font-variant-numeric:tabular-nums;}
+#three-body-universe .tb-legend{position:absolute;left:26px;bottom:25px;display:flex;gap:20px;font:12px/1.4 system-ui,sans-serif;color:#d2dbe8;pointer-events:none;}
+#three-body-universe .tb-legend>span{display:flex;gap:7px;align-items:center;}
+#three-body-universe .tb-legend small{color:#8190a4;font-size:10px;}
+#three-body-universe .tb-dot{display:inline-block;width:5px;height:5px;border-radius:50%;}
+#three-body-universe .tb-a{background:#badfff;box-shadow:0 0 9px #a2ccff;}
+#three-body-universe .tb-b{background:#ffda94;box-shadow:0 0 9px #ffc978;}
+#three-body-universe .tb-c{background:#f19a75;box-shadow:0 0 9px #ef8c61;}
+#three-body-universe .tb-gesture{position:absolute;right:25px;bottom:26px;font:10px/1.4 system-ui,"PingFang SC",sans-serif;color:#74859a;pointer-events:none;}
+#three-body-universe .tb-controls{margin-top:14px;}
+#three-body-universe .tb-detail{min-height:24px;margin-top:10px;gap:12px;}
+#three-body-universe .tb-size-note{margin-left:auto;}
+@media(max-width:650px){
+  #three-body-universe .tb-gesture{bottom:16px;left:22px;right:auto;font-size:9px;}
+  #three-body-universe .tb-legend{bottom:43px;left:22px;gap:18px;}
+  #three-body-universe .tb-legend small{display:none;}
+  #three-body-universe .tb-title{left:22px;top:24px;}
+  #three-body-universe .tb-title h2{font-size:24px;letter-spacing:2px;}
+  #three-body-universe .tb-title p{font-size:8px;letter-spacing:2px;}
+  #three-body-universe .tb-clock{right:22px;top:107px;font-size:10px;}
+  #three-body-universe .tb-clock output{font-size:13px;}
+  #three-body-universe .tb-detail{gap:6px 12px;}
+}
+</style>
+<script>
+const ThreeBodyPhysics = (() => {
+  const G = 1;
+  const SOFTENING = .008;
+  const STEP = .0008;
+  const norm = p => Math.hypot(...p);
+  function centered(stars) {
+    const mass = stars.reduce((s,b)=>s+b.mass,0);
+    for(let k=0;k<3;k++) {
+      const p=stars.reduce((s,b)=>s+b.p[k]*b.mass,0)/mass;
+      const v=stars.reduce((s,b)=>s+b.v[k]*b.mass,0)/mass;
+      for(const b of stars){b.p[k]-=p;b.v[k]-=v;}
+    }
+    return stars;
+  }
+  function stellarInitial(seed=0) {
+    const stars = [
+      {id:'a',name:'恒星 A',kind:'star',mass:1.22,luminosity:1.8,p:[-2.25,.18,-.85],v:[.1247801644,.0105248564,-.4372977500]},
+      {id:'b',name:'恒星 B',kind:'star',mass:.94,luminosity:.83,p:[1.85,-.24,-1.15],v:[.1189508196,-.0273294534,.3784359982]},
+      {id:'c',name:'恒星 C',kind:'star',mass:.73,luminosity:.31,p:[.75,.63,2.15],v:[-.5963591593,-.0403067464,.1186143929]}
+    ];
+    if(seed) stars[2].v[0] += seed;
+    return centered(stars);
+  }
+  function planet(star,id,name,r,phase,tilt) {
+    const c=Math.cos(phase),s=Math.sin(phase),ct=Math.cos(tilt),st=Math.sin(tilt);
+    const speed=Math.sqrt(G*star.mass/r);
+    return {id,name,kind:'planet',host:star.id,mass:0,p:[star.p[0]+r*c,star.p[1]+r*s*st,star.p[2]+r*s*ct],
+      v:[star.v[0]-speed*s,star.v[1]+speed*c*st,star.v[2]+speed*c*ct]};
+  }
+  function create(options={}) {
+    const stars=options.stars ? centered(options.stars.map(b=>({...b,p:b.p.slice(),v:b.v.slice()}))) : stellarInitial(options.perturb||0);
+    const bodies=[...stars];
+    if(options.planets!==false) {
+      bodies.push(planet(stars[0],'p1','A · 砾星',.58,.9,.36));
+      bodies.push(planet(stars[1],'p2','B · 沧星',.48,3.5,-.48));
+      bodies.push(planet(stars[2],'p3','C · 沙星',.4,5.6,.65));
+      bodies.push({id:'trisolaris',name:'三体星',kind:'planet',host:null,mass:0,p:[-1.1,.42,4.6],v:[-.49,.04,-.05]});
+    }
+    const sim={bodies,time:0,steps:0,collisions:[]};
+    sim.acceleration=accelerations(bodies);
+    return sim;
+  }
+  function accelerations(bodies) {
+    return bodies.map((body,i)=>{
+      const a=[0,0,0];
+      for(let j=0;j<3;j++) {
+        if(i===j) continue;
+        const other=bodies[j],dx=other.p[0]-body.p[0],dy=other.p[1]-body.p[1],dz=other.p[2]-body.p[2];
+        const r2=dx*dx+dy*dy+dz*dz+SOFTENING*SOFTENING;
+        const force=G*other.mass/(r2*Math.sqrt(r2));
+        a[0]+=dx*force;a[1]+=dy*force;a[2]+=dz*force;
+      }
+      return a;
+    });
+  }
+  function step(sim,dt=STEP) {
+    for(let i=0;i<sim.bodies.length;i++) {
+      const b=sim.bodies[i],a=sim.acceleration[i];
+      for(let k=0;k<3;k++){b.p[k]+=b.v[k]*dt+.5*a[k]*dt*dt;b.v[k]+=.5*a[k]*dt;}
+    }
+    const next=accelerations(sim.bodies);
+    for(let i=0;i<sim.bodies.length;i++) for(let k=0;k<3;k++) sim.bodies[i].v[k]+=.5*next[i][k]*dt;
+    sim.acceleration=next;sim.time+=dt;sim.steps++;
+  }
+  function advance(sim,duration) {
+    let rest=duration;
+    while(rest>1e-12){const dt=Math.min(STEP,rest);step(sim,dt);rest-=dt;}
+  }
+  function energy(sim) {
+    const stars=sim.bodies.slice(0,3);
+    let e=stars.reduce((s,b)=>s+.5*b.mass*norm(b.v)**2,0);
+    for(let i=0;i<3;i++) for(let j=i+1;j<3;j++) {
+      const d=stars[i].p.map((v,k)=>v-stars[j].p[k]);
+      e-=G*stars[i].mass*stars[j].mass/Math.sqrt(norm(d)**2+SOFTENING**2);
+    }
+    return e;
+  }
+  function center(sim) {
+    const stars=sim.bodies.slice(0,3),m=stars.reduce((s,b)=>s+b.mass,0);
+    return [0,1,2].map(k=>stars.reduce((s,b)=>s+b.p[k]*b.mass,0)/m);
+  }
+  function flux(sim,body) {
+    return sim.bodies.slice(0,3).map(star=>{
+      const d=norm(body.p.map((v,k)=>v-star.p[k]));
+      return {id:star.id,distance:d,flux:star.luminosity/Math.max(.02,d*d)};
+    });
+  }
+  return {create,step,advance,energy,center,flux,G,STEP,SOFTENING};
+})();
+if(typeof module!=='undefined') module.exports=ThreeBodyPhysics;
+
+(() => {
+  'use strict';
+  const root=document.getElementById('three-body-universe');
+  if(!root || root.tbGetState) return;
+  const $=id=>root.querySelector('#tb-'+id);
+  const canvas=$('cosmos'),ctx=canvas.getContext('2d',{alpha:false});
+  const P=ThreeBodyPhysics,TAU=Math.PI*2,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const rates=[.25,.5,1,2,4];
+  const colors={a:[183,220,255],b:[255,209,139],c:[245,145,105],p1:[199,142,109],p2:[108,181,204],p3:[205,178,132],trisolaris:[113,210,178]};
+  const rgba=(c,a=1)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const prefs={yaw:.48,pitch:.5,distance:9.6,speed:2,trails:true,follow:'system',selected:'trisolaris',paused:matchMedia('(prefers-reduced-motion: reduce)').matches};
+  let sim=P.create(),W=736,H=560,dpr=1,raf=0,last=0,lastUi=0,renderCount=0,trailAccumulator=0;
+  let target=[0,0,0],visible=true,starHit=[],zoomUser=false;
+  const trails=new Map(),pointers=new Map();
+  let seed=160409;
+  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+  const background=Array.from({length:1200},()=>{
+    const a=random()*TAU,y=random()*2-1,r=Math.sqrt(1-y*y);
+    return {p:[Math.cos(a)*r,y,Math.sin(a)*r],size:random()>.985?1.1:.2+random()*.55,alpha:.16+random()*.54};
+  });
+  const patches=Array.from({length:36},()=>({u:random(),v:random(),r:.045+random()*.13}));
+  for(const body of sim.bodies) trails.set(body.id,[body.p.slice()]);
+  function applySaved(saved) {
+    const p=saved?.privateContent;
+    if(p?.scene!=='three-body-v1') return;
+    for(const [key,a,b] of [['yaw',-100,100],['pitch',-.2,1.45],['distance',4,100],['speed',0,4]]) if(Number.isFinite(p[key]))prefs[key]=clamp(p[key],a,b);
+    if(typeof p.paused==='boolean')prefs.paused=p.paused;
+    if(typeof p.trails==='boolean')prefs.trails=p.trails;
+    if(p.follow==='system'||sim.bodies.some(b=>b.id===p.follow))prefs.follow=p.follow;
+    if(sim.bodies.some(b=>b.id===p.selected))prefs.selected=p.selected;
+  }
+  try{applySaved(JSON.parse(localStorage.getItem('three-body-universe-v1')||'null'));}catch(_){}
+  function save(){try{localStorage.setItem('three-body-universe-v1',JSON.stringify({privateContent:{...prefs,scene:'three-body-v1'}}));}catch(_){}}
+
+  function cameraPoint(p,sky=false) {
+    const x=p[0]-(sky?0:target[0]),y=p[1]-(sky?0:target[1]),z=p[2]-(sky?0:target[2]);
+    const sy=Math.sin(prefs.yaw),cy=Math.cos(prefs.yaw),sp=Math.sin(prefs.pitch),cp=Math.cos(prefs.pitch);
+    const xx=x*cy-z*sy,yy=-x*sy*sp+y*cp-z*cy*sp;
+    const zz=(sky?0:prefs.distance)-x*sy*cp-y*sp-z*cy*cp;
+    const focal=Math.min(W,H)*1.31;
+    return {x:W*.5+focal*xx/Math.max(.06,zz),y:H*.485-focal*yy/Math.max(.06,zz),z:zz,scale:focal/Math.max(.06,zz)};
+  }
+  function circle(x,y,r,fill){if(!Number.isFinite(x+y+r)||r<=0)return;ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fillStyle=fill;ctx.fill();}
+  function glow(x,y,r,color,alpha=.3){
+    if(r<=0 || !Number.isFinite(x+y+r))return;
+    const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,rgba(color,alpha));g.addColorStop(.16,rgba(color,alpha*.55));g.addColorStop(.5,rgba(color,alpha*.13));g.addColorStop(1,rgba(color,0));circle(x,y,r,g);
+  }
+  function line3(points,color,width=1,closed=false){
+    ctx.beginPath();let started=false;
+    for(const point of points){const p=cameraPoint(point);if(p.z<.12){started=false;continue;}if(!started){ctx.moveTo(p.x,p.y);started=true;}else ctx.lineTo(p.x,p.y);}
+    if(closed)ctx.closePath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();
+  }
+  function sky() {
+    ctx.fillStyle='#030713';ctx.fillRect(0,0,W,H);
+    const light=ctx.createRadialGradient(W*.45,H*.48,0,W*.45,H*.48,Math.max(W,H)*.65);
+    light.addColorStop(0,'#0c1628');light.addColorStop(.5,'#070c1a');light.addColorStop(1,'#02040c');ctx.fillStyle=light;ctx.fillRect(0,0,W,H);
+    for(let i=0;i<5;i++){
+      const p=cameraPoint([Math.sin(-1.2+i*.3)*160,25-i*9,-Math.cos(-1.2+i*.3)*160],true);
+      if(p.z>.1)glow(p.x,p.y,Math.min(W,H)*.5,[31+i*3,47,76+i*8],.12);
+    }
+    for(const star of background){const p=cameraPoint(star.p,true);if(p.z>.1&&p.x>-2&&p.x<W+2&&p.y>-2&&p.y<H+2)circle(p.x,p.y,star.size,'rgba(190,210,236,'+star.alpha+')');}
+  }
+  function referencePlane() {
+    const center=P.center(sim);
+    const radius=Math.max(4.4,Math.min(11,prefs.distance*.43));
+    for(let i=1;i<=4;i++){
+      const r=radius*i/4,points=[];
+      for(let j=0;j<=120;j++){const a=j/120*TAU;points.push([center[0]+r*Math.cos(a),center[1],center[2]+r*Math.sin(a)]);}
+      line3(points,'rgba(107,138,174,'+(i===4?.1:.055)+')',.6);
+    }
+    for(let i=0;i<8;i++){
+      const a=i/8*TAU;
+      line3([[center[0]+radius*Math.cos(a),center[1],center[2]+radius*Math.sin(a)],[center[0]-radius*Math.cos(a),center[1],center[2]-radius*Math.sin(a)]],'rgba(107,138,174,.045)',.55);
+    }
+    const p=cameraPoint(center);
+    ctx.strokeStyle='rgba(177,196,216,.25)';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(p.x-4,p.y);ctx.lineTo(p.x+4,p.y);ctx.moveTo(p.x,p.y-4);ctx.lineTo(p.x,p.y+4);ctx.stroke();
+  }
+  function drawTrails(){
+    if(!prefs.trails)return;
+    for(const body of sim.bodies){
+      const points=trails.get(body.id),color=colors[body.id];
+      if(points.length<2)continue;
+      const count=12,chunk=Math.max(2,Math.ceil(points.length/count));
+      for(let i=0;i<points.length-1;i+=chunk){
+        const alpha=(.08+.55*(i/points.length)**1.2)*(body.kind==='star'?1:.62);
+        line3(points.slice(i,Math.min(points.length,i+chunk+1)),rgba(color,alpha),body.kind==='star'?1.2:.75);
+      }
+      line3([points[points.length-1],body.p],rgba(color,.6),body.kind==='star'?1.2:.75);
+    }
+  }
+  function drawSun(body,p){
+    const c=colors[body.id],r=clamp(p.scale*(body.id==='a'?.29:body.id==='b'?.255:.225),8,45);
+    ctx.save();ctx.globalCompositeOperation='screen';
+    glow(p.x,p.y,r*7.1,c,.23);glow(p.x,p.y,r*2.5,c,.42);
+    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(-.1);ctx.scale(1,.055);glow(0,0,r*6,c,.24);ctx.restore();
+    ctx.restore();
+    const sphere=ctx.createRadialGradient(p.x-r*.28,p.y-r*.25,r*.04,p.x,p.y,r);
+    sphere.addColorStop(0,body.id==='a'?'#f4fcff':body.id==='b'?'#fff6dc':'#ffddb3');
+    sphere.addColorStop(.6,rgba(c));sphere.addColorStop(.9,body.id==='a'?'#84b9e5':body.id==='b'?'#eab36a':'#db704a');sphere.addColorStop(1,body.id==='a'?'#5681b4':body.id==='b'?'#be7b3d':'#934634');
+    circle(p.x,p.y,r,sphere);
+    ctx.save();ctx.beginPath();ctx.arc(p.x,p.y,r*.99,0,TAU);ctx.clip();
+    for(let i=0;i<40;i++){
+      const a=i*2.39996+sim.time*.2,rr=r*Math.sqrt((i+.5)/40);
+      const x=p.x+Math.cos(a)*rr,y=p.y+Math.sin(a)*rr*.97;
+      circle(x,y,r*(.04+.012*(i%4)),i%3?'rgba(255,251,217,.065)':'rgba(117,75,58,.08)');
+    }
+    ctx.restore();
+    ctx.strokeStyle=rgba(c,.2);ctx.lineWidth=.65;
+    for(let i=0;i<5;i++){
+      const a=i*1.27+sim.time*.055+body.mass;
+      ctx.beginPath();ctx.ellipse(p.x+Math.cos(a)*r*.9,p.y+Math.sin(a)*r*.9,r*.42,r*.13,a,0,Math.PI);ctx.stroke();
+    }
+    return r;
+  }
+  function drawPlanet(body,p){
+    const c=colors[body.id],r=clamp(p.scale*(body.id==='trisolaris'?.088:.063),3.5,16);
+    const light=P.flux(sim,body).sort((a,b)=>b.flux-a.flux)[0];
+    const source=cameraPoint(sim.bodies.find(b=>b.id===light.id).p);
+    const a=Math.atan2(source.y-p.y,source.x-p.x),lx=Math.cos(a),ly=Math.sin(a);
+    if(body.id==='trisolaris')glow(p.x,p.y,r*2.6,[90,194,191],.13);
+    const g=ctx.createRadialGradient(p.x+lx*r*.47,p.y+ly*r*.47,r*.07,p.x-lx*r*.22,p.y-ly*r*.22,r*1.25);
+    g.addColorStop(0,rgba(c));g.addColorStop(.48,rgba(c.map(v=>Math.round(v*.7))));g.addColorStop(1,'#08111a');circle(p.x,p.y,r,g);
+    ctx.save();ctx.beginPath();ctx.arc(p.x,p.y,r,0,TAU);ctx.clip();
+    if(body.id==='trisolaris'){
+      for(let i=0;i<patches.length;i++){
+        const q=patches[i],longitude=q.u*TAU+sim.time*.35;
+        if(Math.cos(longitude)<0)continue;
+        const x=Math.sin(longitude)*Math.cos(q.v*Math.PI-Math.PI/2),y=Math.sin(q.v*Math.PI-Math.PI/2);
+        ctx.fillStyle=i%3?'rgba(125,153,103,.55)':'rgba(213,223,202,.48)';ctx.beginPath();ctx.ellipse(p.x+x*r,p.y+y*r,r*q.r*2,r*q.r,.3,0,TAU);ctx.fill();
+      }
+    }else if(body.id==='p2'){
+      ctx.strokeStyle='rgba(176,213,215,.22)';ctx.lineWidth=Math.max(.7,r*.12);
+      for(let i=-3;i<4;i++){ctx.beginPath();ctx.ellipse(p.x,p.y+i*r*.25,r*1.1,r*.12,.2,0,TAU);ctx.stroke();}
+    }else{
+      for(let i=0;i<8;i++){const a=i*2.4,x=p.x+Math.cos(a)*r*.6,y=p.y+Math.sin(a)*r*.6;circle(x,y,r*.1,'rgba(53,43,42,.2)');}
+    }
+    const night=ctx.createLinearGradient(p.x-lx*r,p.y-ly*r,p.x+lx*r,p.y+ly*r);
+    night.addColorStop(0,'rgba(0,4,12,.83)');night.addColorStop(.5,'rgba(0,4,12,.13)');night.addColorStop(1,'rgba(0,4,12,0)');ctx.fillStyle=night;ctx.fillRect(p.x-r,p.y-r,r*2,r*2);ctx.restore();
+    ctx.strokeStyle=rgba(c,.48);ctx.lineWidth=.6;ctx.beginPath();ctx.arc(p.x,p.y,r,0,TAU);ctx.stroke();
+    return r;
+  }
+  let labelBoxes=[];
+  function drawLabel(body,p,r){
+    const selected=body.id===prefs.selected;
+    ctx.font=(body.kind==='star'?'12':'10')+'px system-ui,"PingFang SC",sans-serif';
+    const name=body.kind==='star'?body.name:body.id==='trisolaris'?'三体星':body.id==='p1'?'砾星':body.id==='p2'?'沧星':'沙星';
+    const width=ctx.measureText(name).width;
+    let x=p.x+r+10,y=p.y+(body.kind==='star'?-r-7:r+14);
+    if(x+width>W-15)x=p.x-r-width-10;
+    for(let attempt=0;attempt<7;attempt++){
+      const overlap=labelBoxes.some(b=>x<b.x+b.w+5&&x+width>b.x-5&&y-10<b.y+4&&y>b.y-12) || starHit.some(b=>b.id!==body.id&&x<b.x+b.r&&x+width>b.x-b.r&&y-11<b.y+b.r&&y+3>b.y-b.r);
+      if(!overlap)break;y+=14;
+    }
+    if(y>H-75)y=p.y-r-12;
+    x=clamp(x,12,Math.max(12,W-width-12));y=clamp(y,148,H-75);
+    if(p.x<-30||p.x>W+30||p.y<100||p.y>H-55)return;
+    ctx.strokeStyle=rgba(colors[body.id],selected?.5:.2);ctx.lineWidth=.55;ctx.beginPath();ctx.moveTo(p.x+(x>p.x?r:-r),p.y);ctx.lineTo(x-3,y-4);ctx.stroke();
+    ctx.fillStyle=selected?'#e1f2ec':body.kind==='star'?'#c6d3e3':'#899caf';ctx.fillText(name,x,y);labelBoxes.push({x,y,w:width});
+  }
+  function paint(){
+    if(!ctx)return;
+    const follow=sim.bodies.find(b=>b.id===prefs.follow);
+    target=follow?follow.p.slice():P.center(sim);
+    if(!follow&&!zoomUser){
+      const extent=Math.max(...sim.bodies.slice(0,3).map(b=>Math.hypot(...b.p.map((v,k)=>v-target[k]))));
+      if(extent>prefs.distance*.37)prefs.distance=Math.min(150,prefs.distance+(extent/.36-prefs.distance)*.08);
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);sky();referencePlane();drawTrails();
+    labelBoxes=[];starHit=[];
+    const items=sim.bodies.map(body=>({body,p:cameraPoint(body.p)})).filter(o=>o.p.z>.12).sort((a,b)=>b.p.z-a.p.z);
+    for(const {body,p} of items){
+      if(p.x<-150||p.x>W+150||p.y<-150||p.y>H+150)continue;
+      const r=body.kind==='star'?drawSun(body,p):drawPlanet(body,p);
+      if(body.id===prefs.selected){ctx.strokeStyle=rgba(colors[body.id],.58);ctx.lineWidth=.7;ctx.beginPath();ctx.arc(p.x,p.y,r+6,.1,1.3);ctx.arc(p.x,p.y,r+6,1.7,2.9);ctx.arc(p.x,p.y,r+6,3.3,4.5);ctx.arc(p.x,p.y,r+6,4.9,6.1);ctx.stroke();}
+      starHit.push({id:body.id,x:p.x,y:p.y,r:Math.max(r+7,17),p:body.p.slice()});
+    }
+    for(const {body,p} of items)drawLabel(body,p,body.kind==='star'?clamp(p.scale*.275,8,45):clamp(p.scale*.07,3.5,16));
+    const vignette=ctx.createRadialGradient(W*.5,H*.5,Math.min(W,H)*.3,W*.5,H*.5,Math.max(W,H)*.66);
+    vignette.addColorStop(0,'rgba(0,2,8,0)');vignette.addColorStop(1,'rgba(0,2,8,.56)');ctx.fillStyle=vignette;ctx.fillRect(0,0,W,H);
+    renderCount++;
+  }
+  function updateReadout(){
+    $('time').textContent=(sim.time/TAU).toFixed(2)+' 年';
+    const body=sim.bodies.find(b=>b.id===prefs.selected)||sim.bodies[6];
+    $('selected').textContent=body.name;
+    if(body.kind==='star'){
+      const distances=sim.bodies.slice(0,3).filter(b=>b!==body).map(b=>Math.hypot(...b.p.map((v,k)=>v-body.p[k]))).sort((a,b)=>a-b);
+      $('reading').textContent=`质量 ${body.mass.toFixed(2)} M☉ · 最近恒星 ${distances[0].toFixed(2)} AU`;
+    }else{
+      const lights=P.flux(sim,body),sum=lights.reduce((s,l)=>s+l.flux,0);
+      const nearest=lights.slice().sort((a,b)=>a.distance-b.distance)[0];
+      $('reading').textContent=`距恒星 ${nearest.id.toUpperCase()} ${nearest.distance.toFixed(2)} AU · 三日合计照度 ${sum.toFixed(2)}（地球=1）`;
+    }
+  }
+  function sync(){
+    $('pause').textContent=prefs.paused?'继续':'暂停';$('pause').setAttribute('aria-pressed',String(prefs.paused));
+    $('speed').value=String(prefs.speed);$('speed-value').textContent=rates[prefs.speed]+'×';$('trails').checked=prefs.trails;$('follow').value=prefs.follow;updateReadout();
+  }
+  function evolve(duration){
+    let remaining=duration;
+    while(remaining>1e-10){
+      const dt=Math.min(P.STEP,remaining);P.step(sim,dt);remaining-=dt;trailAccumulator+=dt;
+      if(trailAccumulator>=.025){trailAccumulator-=.025;for(const body of sim.bodies){const history=trails.get(body.id);history.push(body.p.slice());if(history.length>1400)history.shift();}}
+    }
+  }
+  function tick(now){
+    raf=0;
+    if(!root.isConnected)return;
+    const dt=last?Math.min((now-last)/1000,.06):0;last=now;
+    if(!prefs.paused&&!document.hidden&&visible)evolve(dt*.9*rates[prefs.speed]);
+    if(!document.hidden&&visible){paint();if(now-lastUi>200){updateReadout();lastUi=now;}}
+    raf=requestAnimationFrame(tick);
+  }
+  function resize(){const bounds=canvas.getBoundingClientRect();if(!bounds.width||!bounds.height)return;W=bounds.width;H=bounds.height;dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);paint();}
+  $('pause').addEventListener('click',()=>{prefs.paused=!prefs.paused;sync();save();$('announcer').textContent=prefs.paused?'模拟已暂停':'模拟继续';});
+  $('reset').addEventListener('click',()=>{sim=P.create();trailAccumulator=0;for(const b of sim.bodies)trails.set(b.id,[b.p.slice()]);sync();paint();$('announcer').textContent='已恢复初始星系';});
+  $('home').addEventListener('click',()=>{prefs.yaw=.48;prefs.pitch=.5;prefs.distance=9.6;zoomUser=false;prefs.follow='system';sync();paint();save();});
+  $('speed').addEventListener('input',e=>{prefs.speed=Number(e.target.value);sync();});$('speed').addEventListener('change',save);
+  $('trails').addEventListener('change',e=>{prefs.trails=e.target.checked;paint();save();});
+  $('follow').addEventListener('change',e=>{prefs.follow=e.target.value;if(prefs.follow!=='system')prefs.selected=prefs.follow;sync();paint();save();});
+  let moved=0,lastX=0,lastY=0,pinch=0,downX=0,downY=0;
+  const pointerDistance=()=>{const p=[...pointers.values()];return p.length>1?Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y):0;};
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.button!==0&&e.pointerType==='mouse')return;e.preventDefault();pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    try{canvas.setPointerCapture(e.pointerId);}catch(_){}lastX=e.clientX;lastY=e.clientY;downX=e.clientX;downY=e.clientY;moved=0;pinch=pointerDistance();canvas.style.cursor='grabbing';
+  });
+  function move(e){
+    if(!pointers.has(e.pointerId))return;e.preventDefault();pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});moved+=Math.abs(e.clientX-lastX)+Math.abs(e.clientY-lastY);
+    if(pointers.size>1){const d=pointerDistance();if(pinch>0&&d>0){prefs.distance=clamp(prefs.distance*pinch/d,4,120);zoomUser=true;}pinch=d;}
+    else{prefs.yaw-=(e.clientX-lastX)*.008;prefs.pitch=clamp(prefs.pitch+(e.clientY-lastY)*.007,-.2,1.45);}
+    lastX=e.clientX;lastY=e.clientY;paint();
+  }
+  function end(e){
+    if(!pointers.has(e.pointerId))return;
+    if(moved<6&&pointers.size===1){const bounds=canvas.getBoundingClientRect(),x=e.clientX-bounds.left,y=e.clientY-bounds.top;
+      const hit=starHit.filter(p=>Math.hypot(x-p.x,y-p.y)<p.r).sort((a,b)=>Math.hypot(x-a.x,y-a.y)-Math.hypot(x-b.x,y-b.y))[0];
+      if(hit){prefs.selected=hit.id;sync();paint();$('announcer').textContent='已选择'+sim.bodies.find(b=>b.id===hit.id).name;}}
+    pointers.delete(e.pointerId);pinch=pointerDistance();if(pointers.size===1){const p=[...pointers.values()][0];lastX=p.x;lastY=p.y;}if(!pointers.size){canvas.style.cursor='grab';save();}
+  }
+  window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+  canvas.addEventListener('wheel',e=>{e.preventDefault();prefs.distance=clamp(prefs.distance*Math.exp(e.deltaY*(e.deltaMode===1?.014:.0014)),4,120);zoomUser=true;paint();save();},{passive:false});
+  root.addEventListener('keydown',e=>{if(e.target.matches('input,select'))return;const keys={ArrowLeft:[-.12,0],ArrowRight:[.12,0],ArrowUp:[0,-.09],ArrowDown:[0,.09]};if(!keys[e.key])return;e.preventDefault();prefs.yaw+=keys[e.key][0];prefs.pitch=clamp(prefs.pitch+keys[e.key][1],-.2,1.45);paint();save();});
+  const observer=new ResizeObserver(resize);observer.observe(canvas);
+  if(typeof IntersectionObserver!=='undefined'){const observer=new IntersectionObserver(e=>{visible=e[0].isIntersecting;last=0;if(visible)paint();});observer.observe(canvas);}
+  document.addEventListener('visibilitychange',()=>{last=0;});
+  root.tbGetState=()=>({time:sim.time,positions:sim.bodies.map(b=>({id:b.id,p:b.p.slice(),v:b.v.slice()})),camera:{yaw:prefs.yaw,pitch:prefs.pitch,distance:prefs.distance,target:target.slice()},paused:prefs.paused,trails:prefs.trails,rate:rates[prefs.speed],follow:prefs.follow,selected:prefs.selected,frames:renderCount,energy:P.energy(sim),center:P.center(sim),hits:starHit.map(p=>({...p})),trailPoints:[...trails.values()].map(h=>h.length)});
+  root.tbAdvance=duration=>{evolve(duration);paint();updateReadout();};
+  root.tbProject=point=>cameraPoint(point);
+  sync();resize();raf=requestAnimationFrame(tick);
+})();
+
+</script>
+
+</body>
+</html>
